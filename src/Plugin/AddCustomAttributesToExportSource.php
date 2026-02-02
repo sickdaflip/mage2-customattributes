@@ -32,41 +32,18 @@ class AddCustomAttributesToExportSource
     }
 
     /**
-     * Add custom virtual attributes to the export attribute list
+     * Add custom virtual attributes to the export fields list
+     *
+     * Plugin for Firebear\ImportExport\Model\Export\Product::getFieldsForExport()
      *
      * @param mixed $subject
      * @param array $result
      * @return array
      */
-    public function afterToOptionArray($subject, array $result): array
+    public function afterGetFieldsForExport($subject, array $result): array
     {
-        $customAttributes = [
-            [
-                'value' => DataHelper::ATTRIBUTE_PRICE_INCL_TAX,
-                'label' => __('Price Incl. Tax (FlipDev)')
-            ],
-            [
-                'value' => DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX,
-                'label' => __('Special Price Incl. Tax (FlipDev)')
-            ],
-            [
-                'value' => DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX,
-                'label' => __('Final Price Incl. Tax (FlipDev)')
-            ],
-            [
-                'value' => DataHelper::ATTRIBUTE_PRODUCT_URL,
-                'label' => __('Product URL (FlipDev)')
-            ],
-            [
-                'value' => DataHelper::ATTRIBUTE_IMAGE_URL,
-                'label' => __('Image URL (FlipDev)')
-            ],
-            [
-                'value' => DataHelper::ATTRIBUTE_CATEGORY_PATH,
-                'label' => __('Category Path (FlipDev)')
-            ],
-        ];
+        $customAttributes = $this->dataHelper->getCustomAttributeCodes();
 
-        return array_merge($result, $customAttributes);
+        return array_unique(array_merge($result, $customAttributes));
     }
 }
