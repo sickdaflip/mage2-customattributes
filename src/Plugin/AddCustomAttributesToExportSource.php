@@ -61,7 +61,7 @@ class AddCustomAttributesToExportSource
      * Add custom virtual attributes to the CSV header columns respecting mapping order
      *
      * Plugin for Magento\CatalogImportExport\Model\Export\Product::_getHeaderColumns()
-     * This ensures our fdca_* columns appear at the correct positions based on the mapping
+     * This ensures our fdca_* columns appear at the correct positions with correct names
      *
      * @param mixed $subject
      * @param array $result
@@ -71,135 +71,98 @@ class AddCustomAttributesToExportSource
     {
         $customAttributes = $this->dataHelper->getCustomAttributeCodes();
 
-        // Get the job's mapping configuration to determine column positions
-        $mapping = $this->getMappingFromSubject($subject);
+        // Get the job's configuration (list + replace_code for column names)
+        $config = $this->getExportConfigFromSubject($subject);
 
-        if (empty($mapping)) {
-            // No mapping found - append at end as fallback
+        if (empty($config['list'])) {
+            // No config found - append at end as fallback
             return array_values(array_unique(array_merge($result, $customAttributes)));
         }
 
-        // Build ordered header based on mapping
-        $orderedHeader = $this->buildOrderedHeader($result, $customAttributes, $mapping);
+        // Build ordered header with mapped column names
+        $orderedHeader = $this->buildOrderedHeader($result, $customAttributes, $config);
 
         return $orderedHeader;
     }
 
     /**
-     * Extract column list configuration from export subject
+     * Extract export configuration from subject
      *
      * @param mixed $subject
-     * @return array Returns ['list' => [...], 'columnMap' => [...]]
+     * @return array Returns ['list' => [...], 'replace_code' => [...]]
      */
-    private function getMappingFromSubject($subject): array
+    private function getExportConfigFromSubject($subject): array
     {
+        $config = ['list' => [], 'replace_code' => []];
+
         try {
             if (!method_exists($subject, 'getParameters')) {
-                return [];
+                return $config;
             }
 
             $parameters = $subject->getParameters();
 
-            // Debug: Log replace_code and replace_value which might be the column mapping
-            if (isset($parameters['replace_code'])) {
-                $this->logger->info('FlipDev_CustomAttributes: replace_code: ' . json_encode($parameters['replace_code']));
-            }
-            if (isset($parameters['replace_value'])) {
-                $this->logger->info('FlipDev_CustomAttributes: replace_value: ' . json_encode($parameters['replace_value']));
-            }
-
-            // Debug: Log behavior_data structure
-            if (isset($parameters['behavior_data']) && is_array($parameters['behavior_data'])) {
-                $this->logger->info('FlipDev_CustomAttributes: behavior_data keys: ' . implode(', ', array_keys($parameters['behavior_data'])));
-                // Log maps if present
-                if (isset($parameters['behavior_data']['maps'])) {
-                    $this->logger->info('FlipDev_CustomAttributes: behavior_data[maps]: ' . json_encode(array_slice($parameters['behavior_data']['maps'], 0, 3)));
-                }
-            }
-
-            // The 'list' parameter contains the ordered list of attributes to export
+            // Get the ordered list of system attribute codes
             if (isset($parameters['list']) && is_array($parameters['list'])) {
-                return $parameters['list'];
+                $config['list'] = $parameters['list'];
             }
 
-            $this->logger->info('FlipDev_CustomAttributes: No column list found in parameters');
+            // Get the export column names (parallel array to list)
+            if (isset($parameters['replace_code']) && is_array($parameters['replace_code'])) {
+                $config['replace_code'] = $parameters['replace_code'];
+            }
+
         } catch (\Exception $e) {
-            $this->logger->error('FlipDev_CustomAttributes: Could not get mapping: ' . $e->getMessage());
+            $this->logger->error('FlipDev_CustomAttributes: Could not get export config: ' . $e->getMessage());
         }
 
-        return [];
+        return $config;
     }
 
     /**
-     * Build header columns in the order specified by the list configuration
+     * Build header columns using export names from replace_code
      *
      * @param array $existingHeader
      * @param array $customAttributes
-     * @param array $list The Firebear column list configuration
+     * @param array $config Contains 'list' (system codes) and 'replace_code' (export names)
      * @return array
      */
-    private function buildOrderedHeader(array $existingHeader, array $customAttributes, array $list): array
+    private function buildOrderedHeader(array $existingHeader, array $customAttributes, array $config): array
     {
-        // Extract attribute codes from the list in order
-        // Firebear list structure can be:
-        // - Simple: ['attr1', 'attr2', ...] (strings)
-        // - Complex: [['system' => 'attr1', 'custom' => 'Header1'], ...]
-        // - Or: [['attribute' => 'attr1'], ...]
-        $orderedCodes = [];
+        $list = $config['list'];
+        $replaceCode = $config['replace_code'];
 
-        foreach ($list as $index => $item) {
-            $code = null;
-
-            if (is_string($item)) {
-                // Simple string format
-                $code = $item;
-            } elseif (is_array($item)) {
-                // Object format - try different possible keys
-                $code = $item['system'] ?? $item['attribute'] ?? $item['source'] ?? $item['code'] ?? null;
-
-                // If still null and item has numeric key 0, it might be ['attr_code']
-                if ($code === null && isset($item[0])) {
-                    $code = $item[0];
-                }
-            }
-
-            if (!empty($code) && is_string($code)) {
-                $orderedCodes[] = $code;
+        // Build mapping from system code to export name
+        // list and replace_code are parallel arrays
+        $systemToExport = [];
+        foreach ($list as $index => $systemCode) {
+            if (is_string($systemCode)) {
+                // Use the export name from replace_code if available, otherwise use system code
+                $exportName = isset($replaceCode[$index]) && !empty($replaceCode[$index])
+                    ? $replaceCode[$index]
+                    : $systemCode;
+                $systemToExport[$systemCode] = $exportName;
             }
         }
 
-        // If we couldn't extract any codes, fall back to appending
-        if (empty($orderedCodes)) {
-            $this->logger->info('FlipDev_CustomAttributes: Could not extract attribute codes from list');
-            $result = $existingHeader;
-            foreach ($customAttributes as $attr) {
-                if (!in_array($attr, $result)) {
-                    $result[] = $attr;
-                }
-            }
-            return array_values($result);
-        }
-
-        $this->logger->info('FlipDev_CustomAttributes: Ordered codes from list: ' . implode(', ', array_slice($orderedCodes, 0, 10)) . '...');
-
-        // Build final header using the order from list
-        // The list defines the complete column order
+        // Build final header using export names in the order from list
         $finalHeader = [];
-
-        foreach ($orderedCodes as $code) {
-            $finalHeader[] = $code;
+        foreach ($list as $systemCode) {
+            if (is_string($systemCode) && isset($systemToExport[$systemCode])) {
+                $finalHeader[] = $systemToExport[$systemCode];
+            }
         }
 
-        // Add any existing header columns not in the list (shouldn't happen normally)
+        // Add any existing header columns not in our list (with their original names)
         foreach ($existingHeader as $col) {
-            if (!in_array($col, $finalHeader)) {
+            if (!in_array($col, $finalHeader) && !in_array($col, $list)) {
                 $finalHeader[] = $col;
             }
         }
 
-        // Add any custom attributes that weren't in the list
+        // Add any custom attributes that weren't in the list (shouldn't happen if configured correctly)
         foreach ($customAttributes as $attr) {
-            if (!in_array($attr, $finalHeader)) {
+            if (!isset($systemToExport[$attr]) && !in_array($attr, $finalHeader)) {
                 $finalHeader[] = $attr;
             }
         }
