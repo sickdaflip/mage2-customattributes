@@ -89,7 +89,7 @@ class AddCustomAttributesToExportSource
      * Extract column list configuration from export subject
      *
      * @param mixed $subject
-     * @return array
+     * @return array Returns ['list' => [...], 'columnMap' => [...]]
      */
     private function getMappingFromSubject($subject): array
     {
@@ -100,23 +100,26 @@ class AddCustomAttributesToExportSource
 
             $parameters = $subject->getParameters();
 
-            // The 'list' parameter contains the ordered list of attributes to export
-            // This is where Firebear stores the column configuration with order
-            if (isset($parameters['list']) && is_array($parameters['list'])) {
-                $list = $parameters['list'];
-
-                // Log first item structure for debugging
-                if (!empty($list)) {
-                    $firstItem = reset($list);
-                    $this->logger->info('FlipDev_CustomAttributes: list item structure: ' . json_encode($firstItem));
-                }
-
-                return $list;
+            // Debug: Log replace_code and replace_value which might be the column mapping
+            if (isset($parameters['replace_code'])) {
+                $this->logger->info('FlipDev_CustomAttributes: replace_code: ' . json_encode($parameters['replace_code']));
+            }
+            if (isset($parameters['replace_value'])) {
+                $this->logger->info('FlipDev_CustomAttributes: replace_value: ' . json_encode($parameters['replace_value']));
             }
 
-            // Fallback: check behavior_data for maps
-            if (isset($parameters['behavior_data']['maps']) && is_array($parameters['behavior_data']['maps'])) {
-                return $parameters['behavior_data']['maps'];
+            // Debug: Log behavior_data structure
+            if (isset($parameters['behavior_data']) && is_array($parameters['behavior_data'])) {
+                $this->logger->info('FlipDev_CustomAttributes: behavior_data keys: ' . implode(', ', array_keys($parameters['behavior_data'])));
+                // Log maps if present
+                if (isset($parameters['behavior_data']['maps'])) {
+                    $this->logger->info('FlipDev_CustomAttributes: behavior_data[maps]: ' . json_encode(array_slice($parameters['behavior_data']['maps'], 0, 3)));
+                }
+            }
+
+            // The 'list' parameter contains the ordered list of attributes to export
+            if (isset($parameters['list']) && is_array($parameters['list'])) {
+                return $parameters['list'];
             }
 
             $this->logger->info('FlipDev_CustomAttributes: No column list found in parameters');
