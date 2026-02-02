@@ -32,7 +32,7 @@ class AddCustomAttributesToExportSource
     }
 
     /**
-     * Add custom virtual attributes to the export fields list
+     * Add custom virtual attributes to the export fields list (dropdown)
      *
      * Plugin for Firebear\ImportExport\Model\Export\Product::getFieldsForExport()
      *
@@ -41,6 +41,23 @@ class AddCustomAttributesToExportSource
      * @return array
      */
     public function afterGetFieldsForExport($subject, array $result): array
+    {
+        $customAttributes = $this->dataHelper->getCustomAttributeCodes();
+
+        return array_unique(array_merge($result, $customAttributes));
+    }
+
+    /**
+     * Add custom virtual attributes to the CSV header columns
+     *
+     * Plugin for Magento\CatalogImportExport\Model\Export\Product::_getHeaderColumns()
+     * This ensures our fdca_* columns appear in the actual export CSV
+     *
+     * @param mixed $subject
+     * @param array $result
+     * @return array
+     */
+    public function after_getHeaderColumns($subject, array $result): array
     {
         $customAttributes = $this->dataHelper->getCustomAttributeCodes();
 
