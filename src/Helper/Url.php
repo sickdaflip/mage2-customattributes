@@ -21,6 +21,8 @@ use Magento\Framework\App\Helper\AbstractHelper;
 use Magento\Framework\App\Helper\Context;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Catalog\Helper\Image as ImageHelper;
+use Magento\UrlRewrite\Model\UrlFinderInterface;
+use Magento\UrlRewrite\Service\V1\Data\UrlRewrite;
 
 class Url extends AbstractHelper
 {
@@ -40,6 +42,11 @@ class Url extends AbstractHelper
     private CategoryCollectionFactory $categoryCollectionFactory;
 
     /**
+     * @var UrlFinderInterface
+     */
+    private UrlFinderInterface $urlFinder;
+
+    /**
      * Category name cache to avoid repeated DB queries
      * @var array<int, string>
      */
@@ -56,29 +63,67 @@ class Url extends AbstractHelper
      * @param StoreManagerInterface $storeManager
      * @param ImageHelper $imageHelper
      * @param CategoryCollectionFactory $categoryCollectionFactory
+     * @param UrlFinderInterface $urlFinder
      */
     public function __construct(
         Context $context,
         StoreManagerInterface $storeManager,
         ImageHelper $imageHelper,
-        CategoryCollectionFactory $categoryCollectionFactory
+        CategoryCollectionFactory $categoryCollectionFactory,
+        UrlFinderInterface $urlFinder
     ) {
         parent::__construct($context);
         $this->storeManager = $storeManager;
         $this->imageHelper = $imageHelper;
         $this->categoryCollectionFactory = $categoryCollectionFactory;
+        $this->urlFinder = $urlFinder;
     }
 
     /**
-     * Get full product URL using Magento native URL generation
+     * Get full product URL using URL rewrites (works in admin/CLI context)
      *
      * @param Product $product
+     * @param int|null $storeId
      * @return string
      */
-    public function getProductUrl(Product $product): string
+    public function getProductUrl(Product $product, ?int $storeId = null): string
     {
         try {
-            return $product->getProductUrl();
+            $storeId = $storeId ?? (int) $product->getStoreId();
+
+            // If storeId is 0 (admin), get the default store
+            if ($storeId === 0) {
+                $storeId = (int) $this->storeManager->getDefaultStoreView()->getId();
+            }
+
+            $store = $this->storeManager->getStore($storeId);
+            $baseUrl = rtrim($store->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB), '/');
+
+            // Try to get URL from URL rewrites (most reliable for frontend URLs)
+            $rewrite = $this->urlFinder->findOneByData([
+                UrlRewrite::ENTITY_ID => $product->getId(),
+                UrlRewrite::ENTITY_TYPE => \Magento\CatalogUrlRewrite\Model\ProductUrlRewriteGenerator::ENTITY_TYPE,
+                UrlRewrite::STORE_ID => $storeId,
+            ]);
+
+            if ($rewrite) {
+                return $baseUrl . '/' . $rewrite->getRequestPath();
+            }
+
+            // Fallback: build URL from url_key
+            $urlKey = $product->getUrlKey();
+            if ($urlKey) {
+                $suffix = $this->scopeConfig->getValue(
+                    \Magento\CatalogUrlRewrite\Model\ProductUrlPathGenerator::XML_PATH_PRODUCT_URL_SUFFIX,
+                    \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+                    $storeId
+                );
+                return $baseUrl . '/' . $urlKey . ($suffix ?: '');
+            }
+
+            // Last resort: use SKU
+            return $baseUrl . '/catalog/product/view/id/' . $product->getId();
+
         } catch (\Exception $e) {
             $this->_logger->error('FlipDev_CustomAttributes: URL generation failed: ' . $e->getMessage());
             return '';

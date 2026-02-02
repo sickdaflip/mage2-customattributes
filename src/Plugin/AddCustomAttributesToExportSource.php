@@ -98,24 +98,40 @@ class AddCustomAttributesToExportSource
             if (method_exists($subject, 'getParameters')) {
                 $parameters = $subject->getParameters();
 
-                // Firebear stores mapping in behavior_data->maps or directly in maps
-                if (isset($parameters['behavior_data']['maps'])) {
-                    return $parameters['behavior_data']['maps'];
+                // Debug: Log the parameter keys to understand the structure
+                $this->logger->info('FlipDev_CustomAttributes: Parameter keys: ' . implode(', ', array_keys($parameters)));
+
+                // Check all possible locations for mapping data
+                $possibleKeys = ['maps', 'map', 'mapping', 'export_filter', 'list'];
+                foreach ($possibleKeys as $key) {
+                    if (isset($parameters[$key]) && is_array($parameters[$key])) {
+                        $this->logger->info('FlipDev_CustomAttributes: Found mapping in parameters[' . $key . ']');
+                        return $parameters[$key];
+                    }
+                    if (isset($parameters['behavior_data'][$key]) && is_array($parameters['behavior_data'][$key])) {
+                        $this->logger->info('FlipDev_CustomAttributes: Found mapping in behavior_data[' . $key . ']');
+                        return $parameters['behavior_data'][$key];
+                    }
                 }
-                if (isset($parameters['maps'])) {
-                    return $parameters['maps'];
-                }
-                if (isset($parameters['map'])) {
-                    return $parameters['map'];
+
+                // Debug: Log behavior_data keys if it exists
+                if (isset($parameters['behavior_data']) && is_array($parameters['behavior_data'])) {
+                    $this->logger->info('FlipDev_CustomAttributes: behavior_data keys: ' . implode(', ', array_keys($parameters['behavior_data'])));
                 }
             }
 
             // Try alternative method to get mapping
             if (method_exists($subject, 'getMaps')) {
-                return $subject->getMaps() ?? [];
+                $maps = $subject->getMaps();
+                if (!empty($maps)) {
+                    $this->logger->info('FlipDev_CustomAttributes: Got mapping from getMaps()');
+                    return $maps;
+                }
             }
+
+            $this->logger->info('FlipDev_CustomAttributes: No mapping found');
         } catch (\Exception $e) {
-            $this->logger->debug('FlipDev_CustomAttributes: Could not get mapping: ' . $e->getMessage());
+            $this->logger->error('FlipDev_CustomAttributes: Could not get mapping: ' . $e->getMessage());
         }
 
         return [];
