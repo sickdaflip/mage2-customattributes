@@ -36,35 +36,29 @@ This module adds **6 virtual attributes** to every product:
 
 | Attribute Code | Description | Example |
 |----------------|-------------|---------|
-| `fdca_product_url` | Full product URL | https://www.gastrodax.de/product-name |
-| `fdca_image_url` | Full image URL | https://www.gastrodax.de/media/catalog/product/image.jpg |
-| `fdca_category_path` | Category path (Idealo format) | Gastro > Kühlung > Kühlschränke |
+| `fdca_product_url` | Full product URL | https://example.com/product-name.html |
+| `fdca_image_url` | Full image URL | https://example.com/media/catalog/product/image.jpg |
+| `fdca_category_path` | Category path (Idealo format) | Electronics > Computers > Laptops |
 
 ## Installation
 
+### Via Composer (recommended)
+
 ```bash
-# Navigate to Magento root
-cd /var/www/customers/webs/gastrodax/html
-
-# Create module directory
-mkdir -p app/code/FlipDev/CustomAttributes
-
-# Copy module files (upload ZIP and extract, or use git)
-# ... upload files to app/code/FlipDev/CustomAttributes/ ...
-
-# Enable module
+composer require sickdaflip/mage2-customattributes
 php bin/magento module:enable FlipDev_CustomAttributes
-
-# Run setup upgrade
 php bin/magento setup:upgrade
+php bin/magento cache:flush
+```
 
-# Deploy static content
-php bin/magento setup:static-content:deploy de_DE en_US -f -j $(nproc)
+### Manual Installation
 
-# Compile
-php bin/magento setup:di:compile -f -j $(nproc)
+1. Copy the `src/` contents to `app/code/FlipDev/CustomAttributes/`
+2. Run the following commands:
 
-# Flush cache
+```bash
+php bin/magento module:enable FlipDev_CustomAttributes
+php bin/magento setup:upgrade
 php bin/magento cache:flush
 ```
 
@@ -124,7 +118,7 @@ For each product, the module:
 3. **Image URL**:
    - Gets store media URL
    - Appends image path
-   - Example: `https://gastrodax.de/media/catalog/product/image.jpg`
+   - Example: `https://example.com/media/catalog/product/image.jpg`
 
 4. **Category Path**:
    - Loads product categories
