@@ -154,18 +154,15 @@ class AddCustomAttributesToExportSource
         }
 
         // Add any existing header columns not in our list (with their original names)
+        // But exclude our custom attributes if they're not configured - don't auto-add them
         foreach ($existingHeader as $col) {
-            if (!in_array($col, $finalHeader) && !in_array($col, $list)) {
+            if (!in_array($col, $finalHeader) && !in_array($col, $list) && !in_array($col, $customAttributes)) {
                 $finalHeader[] = $col;
             }
         }
 
-        // Add any custom attributes that weren't in the list (shouldn't happen if configured correctly)
-        foreach ($customAttributes as $attr) {
-            if (!isset($systemToExport[$attr]) && !in_array($attr, $finalHeader)) {
-                $finalHeader[] = $attr;
-            }
-        }
+        // Do NOT add custom attributes that aren't in the job configuration
+        // Only export what the user explicitly configured
 
         return array_values(array_unique($finalHeader));
     }

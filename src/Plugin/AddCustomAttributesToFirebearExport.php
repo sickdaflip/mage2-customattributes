@@ -83,8 +83,18 @@ class AddCustomAttributesToFirebearExport
         }
 
         try {
-            // Get the column name mapping from job configuration
-            $columnMapping = $this->getColumnMapping($subject);
+            // Get the job configuration (which attributes are configured and their mapped names)
+            $jobConfig = $this->getJobConfig($subject);
+            $configuredAttributes = $jobConfig['list'];
+            $columnMapping = $jobConfig['mapping'];
+
+            // Only proceed if at least one of our custom attributes is configured
+            $customAttributes = $this->dataHelper->getCustomAttributeCodes();
+            $activeAttributes = array_intersect($customAttributes, $configuredAttributes);
+
+            if (empty($activeAttributes)) {
+                return $result;
+            }
 
             // Collect all SKUs from export data
             $skus = [];
@@ -102,7 +112,7 @@ class AddCustomAttributesToFirebearExport
             $productData = $this->loadProductData(array_keys($skus));
 
             // Add our virtual attributes to each export row
-            // Use the mapped column names as keys (or system names if no mapping)
+            // Only add attributes that are configured in the job
             foreach ($result as $index => $row) {
                 if (!isset($row['sku']) || !isset($productData[$row['sku']])) {
                     continue;
@@ -110,20 +120,31 @@ class AddCustomAttributesToFirebearExport
 
                 $data = $productData[$row['sku']];
 
-                // Add our virtual attribute values using mapped column names
-                $priceKey = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_PRICE_INCL_TAX;
-                $specialPriceKey = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX;
-                $finalPriceKey = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
-                $urlKey = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
-                $imageKey = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
-                $categoryKey = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
-
-                $result[$index][$priceKey] = $data['price_incl_tax'] ?? '';
-                $result[$index][$specialPriceKey] = $data['special_price_incl_tax'] ?? '';
-                $result[$index][$finalPriceKey] = $data['final_price_incl_tax'] ?? '';
-                $result[$index][$urlKey] = $data['product_url'] ?? '';
-                $result[$index][$imageKey] = $data['image_url'] ?? '';
-                $result[$index][$categoryKey] = $data['category_path'] ?? '';
+                // Only add data for attributes that are configured in the job
+                if (in_array(DataHelper::ATTRIBUTE_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['special_price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['final_price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_PRODUCT_URL, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
+                    $result[$index][$key] = $data['product_url'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_IMAGE_URL, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
+                    $result[$index][$key] = $data['image_url'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_CATEGORY_PATH, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
+                    $result[$index][$key] = $data['category_path'] ?? '';
+                }
             }
 
         } catch (\Exception $e) {
@@ -136,35 +157,38 @@ class AddCustomAttributesToFirebearExport
     }
 
     /**
-     * Get column name mapping from job configuration
+     * Get job configuration including list of attributes and column mapping
      *
      * @param FirebearProductExport $subject
-     * @return array Map of system attribute code => export column name
+     * @return array ['list' => [...], 'mapping' => [...]]
      */
-    private function getColumnMapping(FirebearProductExport $subject): array
+    private function getJobConfig(FirebearProductExport $subject): array
     {
-        $mapping = [];
+        $config = ['list' => [], 'mapping' => []];
 
         try {
             if (!method_exists($subject, 'getParameters')) {
-                return $mapping;
+                return $config;
             }
 
             $parameters = $subject->getParameters();
             $list = $parameters['list'] ?? [];
             $replaceCode = $parameters['replace_code'] ?? [];
 
+            // Store the list of configured attributes
+            $config['list'] = array_filter($list, 'is_string');
+
             // Build mapping from system code to export name
             foreach ($list as $index => $systemCode) {
                 if (is_string($systemCode) && isset($replaceCode[$index]) && !empty($replaceCode[$index])) {
-                    $mapping[$systemCode] = $replaceCode[$index];
+                    $config['mapping'][$systemCode] = $replaceCode[$index];
                 }
             }
         } catch (\Exception $e) {
-            $this->logger->error('FlipDev_CustomAttributes: Could not get column mapping: ' . $e->getMessage());
+            $this->logger->error('FlipDev_CustomAttributes: Could not get job config: ' . $e->getMessage());
         }
 
-        return $mapping;
+        return $config;
     }
 
     /**
