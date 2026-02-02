@@ -48,7 +48,7 @@ class Url extends AbstractHelper
     }
 
     /**
-     * Get full product URL
+     * Get full product URL using Magento native URL generation
      *
      * @param Product $product
      * @return string
@@ -56,25 +56,12 @@ class Url extends AbstractHelper
     public function getProductUrl(Product $product): string
     {
         try {
-            $url = $product->getProductUrl();
-            
-            // If URL is already absolute, return it
-            if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
-                return $url;
-            }
-            
-            // Get store base URL and append product URL key
-            $store = $this->storeManager->getStore($product->getStoreId());
-            $baseUrl = $store->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB);
-            $urlKey = $product->getUrlKey();
-            
-            if (!$urlKey) {
-                return $url;
-            }
-            
-            // Build full URL
-            return rtrim($baseUrl, '/') . 'Url.php/' . $urlKey . '.html';
-            
+            // Use Magento's native getProductUrl() which handles:
+            // - URL rewrites
+            // - Store-specific URLs
+            // - URL suffix (.html)
+            // - Category path in URL (if configured)
+            return $product->getProductUrl();
         } catch (\Exception $e) {
             $this->_logger->error('FlipDev_CustomAttributes: URL generation failed: ' . $e->getMessage());
             return '';
