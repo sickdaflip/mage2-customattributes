@@ -14,9 +14,14 @@
 
     <!-- Plugin for Firebear Product Export - adds virtual attributes to dropdown -->
     <type name="Firebear\ImportExport\Model\Export\Product">
-        <plugin name="flipdev_add_custom_attributes_to_export"
+        <!-- Add fdca_* attributes to export field dropdown -->
+        <plugin name="flipdev_add_custom_attributes_to_dropdown"
                 type="FlipDev\CustomAttributes\Plugin\AddCustomAttributesToExportSource"
                 sortOrder="100"/>
+        <!-- Inject calculated values into export data -->
+        <plugin name="flipdev_add_custom_attributes_to_export_data"
+                type="FlipDev\CustomAttributes\Plugin\AddCustomAttributesToFirebearExport"
+                sortOrder="200"/>
     </type>
 
 </config>
