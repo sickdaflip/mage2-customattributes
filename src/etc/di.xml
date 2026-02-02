@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * FlipDev_CustomAttributes DI Configuration
+ *
+ * @category  FlipDev
+ * @package   FlipDev_CustomAttributes
+ * @author    Philipp Breitsprecher <philippbreitsprecher@gmail.com>
+ * @license   MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!-- Plugin for Firebear Product Export - adds virtual attributes to dropdown -->
+    <type name="Firebear\ImportExport\Model\Export\Product">
+        <!-- Add fdca_* attributes to export field dropdown -->
+        <plugin name="flipdev_add_custom_attributes_to_dropdown"
+                type="FlipDev\CustomAttributes\Plugin\AddCustomAttributesToExportSource"
+                sortOrder="100"/>
+        <!-- Inject calculated values into export data -->
+        <plugin name="flipdev_add_custom_attributes_to_export_data"
+                type="FlipDev\CustomAttributes\Plugin\AddCustomAttributesToFirebearExport"
+                sortOrder="200"/>
+    </type>
+
+</config>

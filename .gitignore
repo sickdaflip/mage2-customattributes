@@ -1,0 +1,28 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.project
+.settings/
+*.sublime-*
+
+# Logs
+*.log
+
+# Composer
+/vendor/
+
+# Build artifacts
+*.zip
+*.tar.gz
+
+# Environment
+.env
+.env.*
