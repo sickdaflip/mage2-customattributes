@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * FlipDev_CustomAttributes Events Configuration
+ *
+ * @category  FlipDev
+ * @package   FlipDev_CustomAttributes
+ * @author    Philipp Breitsprecher <philippbreitsprecher@gmail.com>
+ * @license   MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    
+    <!-- Add custom attributes to product collection (used by Firebear exports) -->
+    <event name="catalog_product_collection_load_after">
+        <observer name="flipdev_customattributes_collection" 
+                  instance="FlipDev\CustomAttributes\Observer\AddCustomAttributesToCollection"/>
+    </event>
+    
+    <!-- Add custom attributes to single product loads -->
+    <event name="catalog_product_load_after">
+        <observer name="flipdev_customattributes_product" 
+                  instance="FlipDev\CustomAttributes\Observer\AddCustomAttributesToProduct"/>
+    </event>
+    
+</config>

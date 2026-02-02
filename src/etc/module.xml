@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * FlipDev_CustomAttributes Module Configuration
+ *
+ * @category  FlipDev
+ * @package   FlipDev_CustomAttributes
+ * @author    Philipp Breitsprecher <philippbreitsprecher@gmail.com>
+ * @license   MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+    <module name="FlipDev_CustomAttributes">
+        <sequence>
+            <module name="Magento_Catalog"/>
+            <module name="Magento_Tax"/>
+            <module name="Magento_Store"/>
+        </sequence>
+    </module>
+</config>
