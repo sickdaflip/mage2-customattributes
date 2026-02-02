@@ -86,7 +86,7 @@ class AddCustomAttributesToExportSource
     }
 
     /**
-     * Extract mapping configuration from export subject
+     * Extract column list configuration from export subject
      *
      * @param mixed $subject
      * @return array
@@ -94,42 +94,32 @@ class AddCustomAttributesToExportSource
     private function getMappingFromSubject($subject): array
     {
         try {
-            // Try to get parameters from the export object
-            if (method_exists($subject, 'getParameters')) {
-                $parameters = $subject->getParameters();
-
-                // Debug: Log the parameter keys to understand the structure
-                $this->logger->info('FlipDev_CustomAttributes: Parameter keys: ' . implode(', ', array_keys($parameters)));
-
-                // Check all possible locations for mapping data
-                $possibleKeys = ['maps', 'map', 'mapping', 'export_filter', 'list'];
-                foreach ($possibleKeys as $key) {
-                    if (isset($parameters[$key]) && is_array($parameters[$key])) {
-                        $this->logger->info('FlipDev_CustomAttributes: Found mapping in parameters[' . $key . ']');
-                        return $parameters[$key];
-                    }
-                    if (isset($parameters['behavior_data'][$key]) && is_array($parameters['behavior_data'][$key])) {
-                        $this->logger->info('FlipDev_CustomAttributes: Found mapping in behavior_data[' . $key . ']');
-                        return $parameters['behavior_data'][$key];
-                    }
-                }
-
-                // Debug: Log behavior_data keys if it exists
-                if (isset($parameters['behavior_data']) && is_array($parameters['behavior_data'])) {
-                    $this->logger->info('FlipDev_CustomAttributes: behavior_data keys: ' . implode(', ', array_keys($parameters['behavior_data'])));
-                }
+            if (!method_exists($subject, 'getParameters')) {
+                return [];
             }
 
-            // Try alternative method to get mapping
-            if (method_exists($subject, 'getMaps')) {
-                $maps = $subject->getMaps();
-                if (!empty($maps)) {
-                    $this->logger->info('FlipDev_CustomAttributes: Got mapping from getMaps()');
-                    return $maps;
+            $parameters = $subject->getParameters();
+
+            // The 'list' parameter contains the ordered list of attributes to export
+            // This is where Firebear stores the column configuration with order
+            if (isset($parameters['list']) && is_array($parameters['list'])) {
+                $list = $parameters['list'];
+
+                // Log first item structure for debugging
+                if (!empty($list)) {
+                    $firstItem = reset($list);
+                    $this->logger->info('FlipDev_CustomAttributes: list item structure: ' . json_encode($firstItem));
                 }
+
+                return $list;
             }
 
-            $this->logger->info('FlipDev_CustomAttributes: No mapping found');
+            // Fallback: check behavior_data for maps
+            if (isset($parameters['behavior_data']['maps']) && is_array($parameters['behavior_data']['maps'])) {
+                return $parameters['behavior_data']['maps'];
+            }
+
+            $this->logger->info('FlipDev_CustomAttributes: No column list found in parameters');
         } catch (\Exception $e) {
             $this->logger->error('FlipDev_CustomAttributes: Could not get mapping: ' . $e->getMessage());
         }
@@ -138,43 +128,48 @@ class AddCustomAttributesToExportSource
     }
 
     /**
-     * Build header columns in the order specified by mapping
+     * Build header columns in the order specified by the list configuration
      *
      * @param array $existingHeader
      * @param array $customAttributes
-     * @param array $mapping
+     * @param array $list The Firebear column list configuration
      * @return array
      */
-    private function buildOrderedHeader(array $existingHeader, array $customAttributes, array $mapping): array
+    private function buildOrderedHeader(array $existingHeader, array $customAttributes, array $list): array
     {
-        // Create a map of system attribute code to its position in the mapping
-        $positionMap = [];
-        $mappedSystemCodes = [];
+        // Extract attribute codes from the list in order
+        // Firebear list structure can be:
+        // - Simple: ['attr1', 'attr2', ...] (strings)
+        // - Complex: [['system' => 'attr1', 'custom' => 'Header1'], ...]
+        // - Or: [['attribute' => 'attr1'], ...]
+        $orderedCodes = [];
 
-        foreach ($mapping as $index => $mapItem) {
-            $systemCode = $mapItem['system'] ?? ($mapItem['source'] ?? '');
-            if (!empty($systemCode)) {
-                $positionMap[$systemCode] = (int)$index;
-                $mappedSystemCodes[] = $systemCode;
+        foreach ($list as $index => $item) {
+            $code = null;
+
+            if (is_string($item)) {
+                // Simple string format
+                $code = $item;
+            } elseif (is_array($item)) {
+                // Object format - try different possible keys
+                $code = $item['system'] ?? $item['attribute'] ?? $item['source'] ?? $item['code'] ?? null;
+
+                // If still null and item has numeric key 0, it might be ['attr_code']
+                if ($code === null && isset($item[0])) {
+                    $code = $item[0];
+                }
+            }
+
+            if (!empty($code) && is_string($code)) {
+                $orderedCodes[] = $code;
             }
         }
 
-        // Check which custom attributes are in the mapping
-        $customInMapping = [];
-        $customNotInMapping = [];
-
-        foreach ($customAttributes as $attr) {
-            if (isset($positionMap[$attr])) {
-                $customInMapping[$attr] = $positionMap[$attr];
-            } else {
-                $customNotInMapping[] = $attr;
-            }
-        }
-
-        // If none of our custom attributes are in the mapping, just append
-        if (empty($customInMapping)) {
+        // If we couldn't extract any codes, fall back to appending
+        if (empty($orderedCodes)) {
+            $this->logger->info('FlipDev_CustomAttributes: Could not extract attribute codes from list');
             $result = $existingHeader;
-            foreach ($customNotInMapping as $attr) {
+            foreach ($customAttributes as $attr) {
                 if (!in_array($attr, $result)) {
                     $result[] = $attr;
                 }
@@ -182,26 +177,25 @@ class AddCustomAttributesToExportSource
             return array_values($result);
         }
 
-        // Build header in mapping order
-        // Start with all mapped system codes in order
-        $orderedByMapping = [];
-        foreach ($mapping as $mapItem) {
-            $systemCode = $mapItem['system'] ?? ($mapItem['source'] ?? '');
-            if (!empty($systemCode)) {
-                $orderedByMapping[] = $systemCode;
-            }
+        $this->logger->info('FlipDev_CustomAttributes: Ordered codes from list: ' . implode(', ', array_slice($orderedCodes, 0, 10)) . '...');
+
+        // Build final header using the order from list
+        // The list defines the complete column order
+        $finalHeader = [];
+
+        foreach ($orderedCodes as $code) {
+            $finalHeader[] = $code;
         }
 
-        // Add any existing header columns that are not in the mapping (at the end)
-        $finalHeader = $orderedByMapping;
+        // Add any existing header columns not in the list (shouldn't happen normally)
         foreach ($existingHeader as $col) {
             if (!in_array($col, $finalHeader)) {
                 $finalHeader[] = $col;
             }
         }
 
-        // Add custom attributes not in mapping at the end
-        foreach ($customNotInMapping as $attr) {
+        // Add any custom attributes that weren't in the list
+        foreach ($customAttributes as $attr) {
             if (!in_array($attr, $finalHeader)) {
                 $finalHeader[] = $attr;
             }
