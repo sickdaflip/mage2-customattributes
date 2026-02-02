@@ -83,6 +83,9 @@ class AddCustomAttributesToFirebearExport
         }
 
         try {
+            // Get the column name mapping from job configuration
+            $columnMapping = $this->getColumnMapping($subject);
+
             // Collect all SKUs from export data
             $skus = [];
             foreach ($result as $row) {
@@ -99,6 +102,7 @@ class AddCustomAttributesToFirebearExport
             $productData = $this->loadProductData(array_keys($skus));
 
             // Add our virtual attributes to each export row
+            // Use the mapped column names as keys (or system names if no mapping)
             foreach ($result as $index => $row) {
                 if (!isset($row['sku']) || !isset($productData[$row['sku']])) {
                     continue;
@@ -106,13 +110,20 @@ class AddCustomAttributesToFirebearExport
 
                 $data = $productData[$row['sku']];
 
-                // Add our virtual attribute values
-                $result[$index][DataHelper::ATTRIBUTE_PRICE_INCL_TAX] = $data['price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] = $data['special_price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] = $data['final_price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_PRODUCT_URL] = $data['product_url'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_IMAGE_URL] = $data['image_url'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_CATEGORY_PATH] = $data['category_path'] ?? '';
+                // Add our virtual attribute values using mapped column names
+                $priceKey = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_PRICE_INCL_TAX;
+                $specialPriceKey = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX;
+                $finalPriceKey = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
+                $urlKey = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
+                $imageKey = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
+                $categoryKey = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
+
+                $result[$index][$priceKey] = $data['price_incl_tax'] ?? '';
+                $result[$index][$specialPriceKey] = $data['special_price_incl_tax'] ?? '';
+                $result[$index][$finalPriceKey] = $data['final_price_incl_tax'] ?? '';
+                $result[$index][$urlKey] = $data['product_url'] ?? '';
+                $result[$index][$imageKey] = $data['image_url'] ?? '';
+                $result[$index][$categoryKey] = $data['category_path'] ?? '';
             }
 
         } catch (\Exception $e) {
@@ -122,6 +133,38 @@ class AddCustomAttributesToFirebearExport
         }
 
         return $result;
+    }
+
+    /**
+     * Get column name mapping from job configuration
+     *
+     * @param FirebearProductExport $subject
+     * @return array Map of system attribute code => export column name
+     */
+    private function getColumnMapping(FirebearProductExport $subject): array
+    {
+        $mapping = [];
+
+        try {
+            if (!method_exists($subject, 'getParameters')) {
+                return $mapping;
+            }
+
+            $parameters = $subject->getParameters();
+            $list = $parameters['list'] ?? [];
+            $replaceCode = $parameters['replace_code'] ?? [];
+
+            // Build mapping from system code to export name
+            foreach ($list as $index => $systemCode) {
+                if (is_string($systemCode) && isset($replaceCode[$index]) && !empty($replaceCode[$index])) {
+                    $mapping[$systemCode] = $replaceCode[$index];
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('FlipDev_CustomAttributes: Could not get column mapping: ' . $e->getMessage());
+        }
+
+        return $mapping;
     }
 
     /**
