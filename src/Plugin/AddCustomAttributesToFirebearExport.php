@@ -78,7 +78,10 @@ class AddCustomAttributesToFirebearExport
      */
     public function afterGetExportData(FirebearProductExport $subject, array $result): array
     {
+        $this->logger->info('FlipDev_CustomAttributes DATA: afterGetExportData CALLED, result count: ' . count($result));
+
         if (empty($result)) {
+            $this->logger->info('FlipDev_CustomAttributes DATA: result is empty, returning');
             return $result;
         }
 
