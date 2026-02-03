@@ -147,11 +147,13 @@ class AddCustomAttributesToFirebearExport
             // Only add attributes that are configured in the job
             $addedCount = 0;
             foreach ($result as $index => $row) {
-                if (!isset($row['sku']) || !isset($productData[$row['sku']])) {
+                // Use mapped column name to find SKU
+                $skuValue = $row[$skuColumnName] ?? ($row['sku'] ?? null);
+                if (empty($skuValue) || !isset($productData[$skuValue])) {
                     continue;
                 }
 
-                $data = $productData[$row['sku']];
+                $data = $productData[$skuValue];
 
                 // Only add data for attributes that are configured in the job
                 if (in_array(DataHelper::ATTRIBUTE_PRICE_INCL_TAX, $configuredAttributes)) {
