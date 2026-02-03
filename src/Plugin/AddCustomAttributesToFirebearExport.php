@@ -83,11 +83,29 @@ class AddCustomAttributesToFirebearExport
         }
 
         try {
+            // Get the job configuration (which attributes are configured and their mapped names)
+            $jobConfig = $this->getJobConfig($subject);
+            $configuredAttributes = $jobConfig['list'];
+            $columnMapping = $jobConfig['mapping'];
+
+            // Only proceed if at least one of our custom attributes is configured
+            $customAttributes = $this->dataHelper->getCustomAttributeCodes();
+            $activeAttributes = array_intersect($customAttributes, $configuredAttributes);
+
+            if (empty($activeAttributes)) {
+                return $result;
+            }
+
             // Collect all SKUs from export data
+            // Note: The data may use mapped column names (e.g., 'aid' instead of 'sku')
+            $skuColumnName = $columnMapping['sku'] ?? 'sku';
+
             $skus = [];
             foreach ($result as $row) {
-                if (isset($row['sku']) && !empty($row['sku'])) {
-                    $skus[$row['sku']] = true;
+                // Try mapped name first, then fall back to 'sku'
+                $skuValue = $row[$skuColumnName] ?? ($row['sku'] ?? null);
+                if (!empty($skuValue)) {
+                    $skus[$skuValue] = true;
                 }
             }
 
@@ -99,20 +117,41 @@ class AddCustomAttributesToFirebearExport
             $productData = $this->loadProductData(array_keys($skus));
 
             // Add our virtual attributes to each export row
+            // Only add attributes that are configured in the job
             foreach ($result as $index => $row) {
-                if (!isset($row['sku']) || !isset($productData[$row['sku']])) {
+                // Use mapped column name to find SKU
+                $skuValue = $row[$skuColumnName] ?? ($row['sku'] ?? null);
+                if (empty($skuValue) || !isset($productData[$skuValue])) {
                     continue;
                 }
 
-                $data = $productData[$row['sku']];
+                $data = $productData[$skuValue];
 
-                // Add our virtual attribute values
-                $result[$index][DataHelper::ATTRIBUTE_PRICE_INCL_TAX] = $data['price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] = $data['special_price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] = $data['final_price_incl_tax'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_PRODUCT_URL] = $data['product_url'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_IMAGE_URL] = $data['image_url'] ?? '';
-                $result[$index][DataHelper::ATTRIBUTE_CATEGORY_PATH] = $data['category_path'] ?? '';
+                // Only add data for attributes that are configured in the job
+                if (in_array(DataHelper::ATTRIBUTE_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['special_price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
+                    $result[$index][$key] = $data['final_price_incl_tax'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_PRODUCT_URL, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
+                    $result[$index][$key] = $data['product_url'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_IMAGE_URL, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
+                    $result[$index][$key] = $data['image_url'] ?? '';
+                }
+                if (in_array(DataHelper::ATTRIBUTE_CATEGORY_PATH, $configuredAttributes)) {
+                    $key = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
+                    $result[$index][$key] = $data['category_path'] ?? '';
+                }
             }
 
         } catch (\Exception $e) {
@@ -122,6 +161,41 @@ class AddCustomAttributesToFirebearExport
         }
 
         return $result;
+    }
+
+    /**
+     * Get job configuration including list of attributes and column mapping
+     *
+     * @param FirebearProductExport $subject
+     * @return array ['list' => [...], 'mapping' => [...]]
+     */
+    private function getJobConfig(FirebearProductExport $subject): array
+    {
+        $config = ['list' => [], 'mapping' => []];
+
+        try {
+            if (!method_exists($subject, 'getParameters')) {
+                return $config;
+            }
+
+            $parameters = $subject->getParameters();
+            $list = $parameters['list'] ?? [];
+            $replaceCode = $parameters['replace_code'] ?? [];
+
+            // Store the list of configured attributes
+            $config['list'] = array_filter($list, 'is_string');
+
+            // Build mapping from system code to export name
+            foreach ($list as $index => $systemCode) {
+                if (is_string($systemCode) && isset($replaceCode[$index]) && !empty($replaceCode[$index])) {
+                    $config['mapping'][$systemCode] = $replaceCode[$index];
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('FlipDev_CustomAttributes: Could not get job config: ' . $e->getMessage());
+        }
+
+        return $config;
     }
 
     /**

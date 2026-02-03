@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace FlipDev\CustomAttributes\Plugin;
 
 use FlipDev\CustomAttributes\Helper\Data as DataHelper;
+use Psr\Log\LoggerInterface;
 
 class AddCustomAttributesToExportSource
 {
@@ -24,11 +25,20 @@ class AddCustomAttributesToExportSource
     private DataHelper $dataHelper;
 
     /**
-     * @param DataHelper $dataHelper
+     * @var LoggerInterface
      */
-    public function __construct(DataHelper $dataHelper)
-    {
+    private LoggerInterface $logger;
+
+    /**
+     * @param DataHelper $dataHelper
+     * @param LoggerInterface $logger
+     */
+    public function __construct(
+        DataHelper $dataHelper,
+        LoggerInterface $logger
+    ) {
         $this->dataHelper = $dataHelper;
+        $this->logger = $logger;
     }
 
     /**
@@ -48,10 +58,10 @@ class AddCustomAttributesToExportSource
     }
 
     /**
-     * Add custom virtual attributes to the CSV header columns
+     * Add custom virtual attributes to the CSV header columns respecting mapping order
      *
      * Plugin for Magento\CatalogImportExport\Model\Export\Product::_getHeaderColumns()
-     * This ensures our fdca_* columns appear in the actual export CSV
+     * This ensures our fdca_* columns appear at the correct positions with correct names
      *
      * @param mixed $subject
      * @param array $result
@@ -61,6 +71,89 @@ class AddCustomAttributesToExportSource
     {
         $customAttributes = $this->dataHelper->getCustomAttributeCodes();
 
-        return array_unique(array_merge($result, $customAttributes));
+        // Get the job's configuration (list + replace_code for column names)
+        $config = $this->getExportConfigFromSubject($subject);
+
+        if (empty($config['list'])) {
+            // No config found - append at end as fallback
+            return array_values(array_unique(array_merge($result, $customAttributes)));
+        }
+
+        // Build ordered header with mapped column names
+        $orderedHeader = $this->buildOrderedHeader($result, $customAttributes, $config);
+
+        return $orderedHeader;
+    }
+
+    /**
+     * Extract export configuration from subject
+     *
+     * @param mixed $subject
+     * @return array Returns ['list' => [...], 'replace_code' => [...]]
+     */
+    private function getExportConfigFromSubject($subject): array
+    {
+        $config = ['list' => [], 'replace_code' => []];
+
+        try {
+            if (!method_exists($subject, 'getParameters')) {
+                return $config;
+            }
+
+            $parameters = $subject->getParameters();
+
+            // Get the ordered list of system attribute codes
+            if (isset($parameters['list']) && is_array($parameters['list'])) {
+                $config['list'] = $parameters['list'];
+            }
+
+            // Get the export column names (parallel array to list)
+            if (isset($parameters['replace_code']) && is_array($parameters['replace_code'])) {
+                $config['replace_code'] = $parameters['replace_code'];
+            }
+
+        } catch (\Exception $e) {
+            $this->logger->error('FlipDev_CustomAttributes: Could not get export config: ' . $e->getMessage());
+        }
+
+        return $config;
+    }
+
+    /**
+     * Build header columns using export names from replace_code
+     *
+     * @param array $existingHeader
+     * @param array $customAttributes
+     * @param array $config Contains 'list' (system codes) and 'replace_code' (export names)
+     * @return array
+     */
+    private function buildOrderedHeader(array $existingHeader, array $customAttributes, array $config): array
+    {
+        $list = $config['list'];
+        $replaceCode = $config['replace_code'];
+
+        // Build mapping from system code to export name
+        // list and replace_code are parallel arrays
+        $systemToExport = [];
+        foreach ($list as $index => $systemCode) {
+            if (is_string($systemCode)) {
+                // Use the export name from replace_code if available, otherwise use system code
+                $exportName = isset($replaceCode[$index]) && !empty($replaceCode[$index])
+                    ? $replaceCode[$index]
+                    : $systemCode;
+                $systemToExport[$systemCode] = $exportName;
+            }
+        }
+
+        // Build final header ONLY from the job's list - nothing else
+        // This ensures only configured columns appear in the export
+        $finalHeader = [];
+        foreach ($list as $systemCode) {
+            if (is_string($systemCode) && isset($systemToExport[$systemCode])) {
+                $finalHeader[] = $systemToExport[$systemCode];
+            }
+        }
+
+        return array_values(array_unique($finalHeader));
     }
 }
