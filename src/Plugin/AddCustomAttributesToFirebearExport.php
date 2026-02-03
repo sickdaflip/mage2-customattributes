@@ -78,10 +78,7 @@ class AddCustomAttributesToFirebearExport
      */
     public function afterGetExportData(FirebearProductExport $subject, array $result): array
     {
-        $this->logger->info('FlipDev_CustomAttributes DATA: afterGetExportData CALLED, result count: ' . count($result));
-
         if (empty($result)) {
-            $this->logger->info('FlipDev_CustomAttributes DATA: result is empty, returning');
             return $result;
         }
 
@@ -95,20 +92,13 @@ class AddCustomAttributesToFirebearExport
             $customAttributes = $this->dataHelper->getCustomAttributeCodes();
             $activeAttributes = array_intersect($customAttributes, $configuredAttributes);
 
-            // Debug logging
-            $this->logger->info('FlipDev_CustomAttributes DATA: configuredAttributes: ' . json_encode(array_slice($configuredAttributes, 0, 10)));
-            $this->logger->info('FlipDev_CustomAttributes DATA: activeAttributes: ' . json_encode($activeAttributes));
-            $this->logger->info('FlipDev_CustomAttributes DATA: columnMapping: ' . json_encode($columnMapping));
-
             if (empty($activeAttributes)) {
-                $this->logger->info('FlipDev_CustomAttributes DATA: No active attributes found, skipping');
                 return $result;
             }
 
             // Collect all SKUs from export data
             // Note: The data may use mapped column names (e.g., 'aid' instead of 'sku')
             $skuColumnName = $columnMapping['sku'] ?? 'sku';
-            $this->logger->info('FlipDev_CustomAttributes DATA: Looking for SKU in column: ' . $skuColumnName);
 
             $skus = [];
             foreach ($result as $row) {
@@ -120,32 +110,14 @@ class AddCustomAttributesToFirebearExport
             }
 
             if (empty($skus)) {
-                $this->logger->info('FlipDev_CustomAttributes DATA: No SKUs found, returning');
-                // Log first row keys to debug
-                if (!empty($result)) {
-                    $firstRow = reset($result);
-                    $this->logger->info('FlipDev_CustomAttributes DATA: First row keys: ' . implode(', ', array_keys($firstRow)));
-                }
                 return $result;
             }
-
-            $this->logger->info('FlipDev_CustomAttributes DATA: Found ' . count($skus) . ' SKUs');
 
             // Load all products at once for efficiency
             $productData = $this->loadProductData(array_keys($skus));
 
-            $this->logger->info('FlipDev_CustomAttributes DATA: Loaded ' . count($productData) . ' products');
-
-            // Log first product data as sample
-            if (!empty($productData)) {
-                $firstSku = array_key_first($productData);
-                $this->logger->info('FlipDev_CustomAttributes DATA: Sample SKU: ' . $firstSku);
-                $this->logger->info('FlipDev_CustomAttributes DATA: Sample data: ' . json_encode($productData[$firstSku]));
-            }
-
             // Add our virtual attributes to each export row
             // Only add attributes that are configured in the job
-            $addedCount = 0;
             foreach ($result as $index => $row) {
                 // Use mapped column name to find SKU
                 $skuValue = $row[$skuColumnName] ?? ($row['sku'] ?? null);
@@ -167,32 +139,20 @@ class AddCustomAttributesToFirebearExport
                 if (in_array(DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX, $configuredAttributes)) {
                     $key = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
                     $result[$index][$key] = $data['final_price_incl_tax'] ?? '';
-                    if ($addedCount === 0) {
-                        $this->logger->info('FlipDev_CustomAttributes DATA: Adding price key=' . $key . ' value=' . ($data['final_price_incl_tax'] ?? 'NULL'));
-                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_PRODUCT_URL, $configuredAttributes)) {
                     $key = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
                     $result[$index][$key] = $data['product_url'] ?? '';
-                    if ($addedCount === 0) {
-                        $this->logger->info('FlipDev_CustomAttributes DATA: Adding url key=' . $key . ' value=' . substr($data['product_url'] ?? 'NULL', 0, 50));
-                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_IMAGE_URL, $configuredAttributes)) {
                     $key = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
                     $result[$index][$key] = $data['image_url'] ?? '';
-                    if ($addedCount === 0) {
-                        $this->logger->info('FlipDev_CustomAttributes DATA: Adding image key=' . $key . ' value=' . substr($data['image_url'] ?? 'NULL', 0, 50));
-                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_CATEGORY_PATH, $configuredAttributes)) {
                     $key = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
                     $result[$index][$key] = $data['category_path'] ?? '';
                 }
-                $addedCount++;
             }
-
-            $this->logger->info('FlipDev_CustomAttributes DATA: Added data to ' . $addedCount . ' rows');
 
         } catch (\Exception $e) {
             $this->logger->error(
