@@ -132,6 +132,12 @@ class AddCustomAttributesToExportSource
         $list = $config['list'];
         $replaceCode = $config['replace_code'];
 
+        // Debug logging
+        $this->logger->info('FlipDev_CustomAttributes: list count: ' . count($list));
+        $this->logger->info('FlipDev_CustomAttributes: replace_code count: ' . count($replaceCode));
+        $this->logger->info('FlipDev_CustomAttributes: list (first 5): ' . json_encode(array_slice($list, 0, 5)));
+        $this->logger->info('FlipDev_CustomAttributes: replace_code (first 5): ' . json_encode(array_slice($replaceCode, 0, 5)));
+
         // Build mapping from system code to export name
         // list and replace_code are parallel arrays
         $systemToExport = [];
@@ -145,7 +151,15 @@ class AddCustomAttributesToExportSource
             }
         }
 
-        // Build final header using export names in the order from list
+        // Log our custom attributes mapping
+        foreach ($customAttributes as $attr) {
+            if (isset($systemToExport[$attr])) {
+                $this->logger->info('FlipDev_CustomAttributes: Mapped ' . $attr . ' -> ' . $systemToExport[$attr]);
+            }
+        }
+
+        // Build final header ONLY from the job's list - nothing else
+        // This ensures only configured columns appear in the export
         $finalHeader = [];
         foreach ($list as $systemCode) {
             if (is_string($systemCode) && isset($systemToExport[$systemCode])) {
@@ -153,16 +167,8 @@ class AddCustomAttributesToExportSource
             }
         }
 
-        // Add any existing header columns not in our list (with their original names)
-        // But exclude our custom attributes if they're not configured - don't auto-add them
-        foreach ($existingHeader as $col) {
-            if (!in_array($col, $finalHeader) && !in_array($col, $list) && !in_array($col, $customAttributes)) {
-                $finalHeader[] = $col;
-            }
-        }
-
-        // Do NOT add custom attributes that aren't in the job configuration
-        // Only export what the user explicitly configured
+        // Do NOT add anything from existingHeader - only use the job's configured list
+        // This prevents unwanted columns like "link" from appearing
 
         return array_values(array_unique($finalHeader));
     }

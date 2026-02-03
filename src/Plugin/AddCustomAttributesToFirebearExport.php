@@ -92,7 +92,13 @@ class AddCustomAttributesToFirebearExport
             $customAttributes = $this->dataHelper->getCustomAttributeCodes();
             $activeAttributes = array_intersect($customAttributes, $configuredAttributes);
 
+            // Debug logging
+            $this->logger->info('FlipDev_CustomAttributes DATA: configuredAttributes: ' . json_encode(array_slice($configuredAttributes, 0, 10)));
+            $this->logger->info('FlipDev_CustomAttributes DATA: activeAttributes: ' . json_encode($activeAttributes));
+            $this->logger->info('FlipDev_CustomAttributes DATA: columnMapping: ' . json_encode($columnMapping));
+
             if (empty($activeAttributes)) {
+                $this->logger->info('FlipDev_CustomAttributes DATA: No active attributes found, skipping');
                 return $result;
             }
 
