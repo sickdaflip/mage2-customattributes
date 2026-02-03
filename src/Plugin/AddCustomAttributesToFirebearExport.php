@@ -106,14 +106,26 @@ class AddCustomAttributesToFirebearExport
             }
 
             // Collect all SKUs from export data
+            // Note: The data may use mapped column names (e.g., 'aid' instead of 'sku')
+            $skuColumnName = $columnMapping['sku'] ?? 'sku';
+            $this->logger->info('FlipDev_CustomAttributes DATA: Looking for SKU in column: ' . $skuColumnName);
+
             $skus = [];
             foreach ($result as $row) {
-                if (isset($row['sku']) && !empty($row['sku'])) {
-                    $skus[$row['sku']] = true;
+                // Try mapped name first, then fall back to 'sku'
+                $skuValue = $row[$skuColumnName] ?? ($row['sku'] ?? null);
+                if (!empty($skuValue)) {
+                    $skus[$skuValue] = true;
                 }
             }
 
             if (empty($skus)) {
+                $this->logger->info('FlipDev_CustomAttributes DATA: No SKUs found, returning');
+                // Log first row keys to debug
+                if (!empty($result)) {
+                    $firstRow = reset($result);
+                    $this->logger->info('FlipDev_CustomAttributes DATA: First row keys: ' . implode(', ', array_keys($firstRow)));
+                }
                 return $result;
             }
 
