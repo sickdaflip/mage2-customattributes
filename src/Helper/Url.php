@@ -84,9 +84,10 @@ class Url extends AbstractHelper
      *
      * @param Product $product
      * @param int|null $storeId
+     * @param bool $appendStoreCode Whether to append ?___store=STORE_CODE parameter
      * @return string
      */
-    public function getProductUrl(Product $product, ?int $storeId = null): string
+    public function getProductUrl(Product $product, ?int $storeId = null, bool $appendStoreCode = false): string
     {
         try {
             $storeId = $storeId ?? (int) $product->getStoreId();
@@ -106,23 +107,32 @@ class Url extends AbstractHelper
                 UrlRewrite::STORE_ID => $storeId,
             ]);
 
+            $url = '';
             if ($rewrite) {
-                return $baseUrl . '/' . $rewrite->getRequestPath();
+                $url = $baseUrl . '/' . $rewrite->getRequestPath();
+            } else {
+                // Fallback: build URL from url_key
+                $urlKey = $product->getUrlKey();
+                if ($urlKey) {
+                    $suffix = $this->scopeConfig->getValue(
+                        \Magento\CatalogUrlRewrite\Model\ProductUrlPathGenerator::XML_PATH_PRODUCT_URL_SUFFIX,
+                        \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+                        $storeId
+                    );
+                    $url = $baseUrl . '/' . $urlKey . ($suffix ?: '');
+                } else {
+                    // Last resort: use product ID
+                    $url = $baseUrl . '/catalog/product/view/id/' . $product->getId();
+                }
             }
 
-            // Fallback: build URL from url_key
-            $urlKey = $product->getUrlKey();
-            if ($urlKey) {
-                $suffix = $this->scopeConfig->getValue(
-                    \Magento\CatalogUrlRewrite\Model\ProductUrlPathGenerator::XML_PATH_PRODUCT_URL_SUFFIX,
-                    \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
-                    $storeId
-                );
-                return $baseUrl . '/' . $urlKey . ($suffix ?: '');
+            // Append store code parameter if requested (for multi-store setups like B2B/B2C)
+            if ($appendStoreCode && !empty($url)) {
+                $storeCode = $store->getCode();
+                $url .= '?___store=' . $storeCode;
             }
 
-            // Last resort: use SKU
-            return $baseUrl . '/catalog/product/view/id/' . $product->getId();
+            return $url;
 
         } catch (\Exception $e) {
             $this->_logger->error('FlipDev_CustomAttributes: URL generation failed: ' . $e->getMessage());

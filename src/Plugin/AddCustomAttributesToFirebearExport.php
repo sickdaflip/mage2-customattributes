@@ -98,7 +98,8 @@ class AddCustomAttributesToFirebearExport
 
             // Collect all SKUs from export data
             // Note: The data may use mapped column names (e.g., 'aid' instead of 'sku')
-            $skuColumnName = $columnMapping['sku'] ?? 'sku';
+            $skuColumnNames = $columnMapping['sku'] ?? ['sku'];
+            $skuColumnName = is_array($skuColumnNames) ? ($skuColumnNames[0] ?? 'sku') : $skuColumnNames;
 
             $skus = [];
             foreach ($result as $row) {
@@ -113,8 +114,11 @@ class AddCustomAttributesToFirebearExport
                 return $result;
             }
 
+            // Get store ID from job config (if a specific store view is selected)
+            $storeId = $jobConfig['store_id'] ?? null;
+
             // Load all products at once for efficiency
-            $productData = $this->loadProductData(array_keys($skus));
+            $productData = $this->loadProductData(array_keys($skus), $storeId);
 
             // Add our virtual attributes to each export row
             // Only add attributes that are configured in the job
@@ -128,29 +132,42 @@ class AddCustomAttributesToFirebearExport
                 $data = $productData[$skuValue];
 
                 // Only add data for attributes that are configured in the job
+                // Each attribute can be mapped to multiple columns
                 if (in_array(DataHelper::ATTRIBUTE_PRICE_INCL_TAX, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_PRICE_INCL_TAX;
-                    $result[$index][$key] = $data['price_incl_tax'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_PRICE_INCL_TAX] ?? [DataHelper::ATTRIBUTE_PRICE_INCL_TAX];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['price_incl_tax'] ?? '';
+                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX;
-                    $result[$index][$key] = $data['special_price_incl_tax'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX] ?? [DataHelper::ATTRIBUTE_SPECIAL_PRICE_INCL_TAX];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['special_price_incl_tax'] ?? '';
+                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX;
-                    $result[$index][$key] = $data['final_price_incl_tax'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX] ?? [DataHelper::ATTRIBUTE_FINAL_PRICE_INCL_TAX];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['final_price_incl_tax'] ?? '';
+                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_PRODUCT_URL, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? DataHelper::ATTRIBUTE_PRODUCT_URL;
-                    $result[$index][$key] = $data['product_url'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_PRODUCT_URL] ?? [DataHelper::ATTRIBUTE_PRODUCT_URL];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['product_url'] ?? '';
+                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_IMAGE_URL, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? DataHelper::ATTRIBUTE_IMAGE_URL;
-                    $result[$index][$key] = $data['image_url'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_IMAGE_URL] ?? [DataHelper::ATTRIBUTE_IMAGE_URL];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['image_url'] ?? '';
+                    }
                 }
                 if (in_array(DataHelper::ATTRIBUTE_CATEGORY_PATH, $configuredAttributes)) {
-                    $key = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? DataHelper::ATTRIBUTE_CATEGORY_PATH;
-                    $result[$index][$key] = $data['category_path'] ?? '';
+                    $keys = $columnMapping[DataHelper::ATTRIBUTE_CATEGORY_PATH] ?? [DataHelper::ATTRIBUTE_CATEGORY_PATH];
+                    foreach ($keys as $key) {
+                        $result[$index][$key] = $data['category_path'] ?? '';
+                    }
                 }
             }
 
@@ -167,11 +184,11 @@ class AddCustomAttributesToFirebearExport
      * Get job configuration including list of attributes and column mapping
      *
      * @param FirebearProductExport $subject
-     * @return array ['list' => [...], 'mapping' => [...]]
+     * @return array ['list' => [...], 'mapping' => [...], 'store_id' => int|null]
      */
     private function getJobConfig(FirebearProductExport $subject): array
     {
-        $config = ['list' => [], 'mapping' => []];
+        $config = ['list' => [], 'mapping' => [], 'store_id' => null];
 
         try {
             if (!method_exists($subject, 'getParameters')) {
@@ -185,12 +202,43 @@ class AddCustomAttributesToFirebearExport
             // Store the list of configured attributes
             $config['list'] = array_filter($list, 'is_string');
 
-            // Build mapping from system code to export name
+            // Build mapping from system code to export name(s)
+            // Support multiple column names per attribute (e.g., fdca_product_url -> ['link', 'target_url'])
             foreach ($list as $index => $systemCode) {
                 if (is_string($systemCode) && isset($replaceCode[$index]) && !empty($replaceCode[$index])) {
-                    $config['mapping'][$systemCode] = $replaceCode[$index];
+                    $exportName = $replaceCode[$index];
+                    if (!isset($config['mapping'][$systemCode])) {
+                        $config['mapping'][$systemCode] = [];
+                    }
+                    $config['mapping'][$systemCode][] = $exportName;
                 }
             }
+
+            // Extract store filter from job parameters
+            // Firebear stores it in behavior_data.store_ids as array
+            $storeId = null;
+
+            // Try 'behavior_data/store_ids' (Firebear's actual location)
+            if (!empty($parameters['behavior_data']['store_ids'])) {
+                $storeIds = $parameters['behavior_data']['store_ids'];
+                if (is_array($storeIds) && count($storeIds) === 1) {
+                    $storeId = (int) reset($storeIds);
+                } elseif (is_numeric($storeIds)) {
+                    $storeId = (int) $storeIds;
+                }
+            }
+
+            // Fallback: Try top-level 'store_ids'
+            if ($storeId === null && !empty($parameters['store_ids'])) {
+                $storeIds = $parameters['store_ids'];
+                if (is_array($storeIds) && count($storeIds) === 1) {
+                    $storeId = (int) reset($storeIds);
+                } elseif (is_numeric($storeIds)) {
+                    $storeId = (int) $storeIds;
+                }
+            }
+
+            $config['store_id'] = $storeId;
         } catch (\Exception $e) {
             $this->logger->error('FlipDev_CustomAttributes: Could not get job config: ' . $e->getMessage());
         }
@@ -202,11 +250,16 @@ class AddCustomAttributesToFirebearExport
      * Load product data for all SKUs and calculate virtual attributes
      *
      * @param array $skus
+     * @param int|null $storeId Store ID from job config (if specific store view is selected)
      * @return array
      */
-    private function loadProductData(array $skus): array
+    private function loadProductData(array $skus, ?int $storeId = null): array
     {
         $productData = [];
+
+        // Determine if we should append store code to URLs
+        // Only append when a specific store view is selected (storeId > 0)
+        $appendStoreCode = ($storeId !== null && $storeId > 0);
 
         // Load products in batches for memory efficiency
         $batchSize = 500;
@@ -214,6 +267,12 @@ class AddCustomAttributesToFirebearExport
 
         foreach ($skuBatches as $skuBatch) {
             $collection = $this->productCollectionFactory->create();
+
+            // Set store context if specified
+            if ($storeId !== null && $storeId > 0) {
+                $collection->setStoreId($storeId);
+            }
+
             $collection->addAttributeToSelect(['price', 'special_price', 'special_from_date', 'special_to_date', 'tax_class_id', 'url_key', 'image'])
                 ->addAttributeToFilter('sku', ['in' => $skuBatch])
                 ->addCategoryIds();
@@ -226,7 +285,7 @@ class AddCustomAttributesToFirebearExport
                         'price_incl_tax' => $this->priceHelper->getPriceInclTax($product),
                         'special_price_incl_tax' => $this->priceHelper->getSpecialPriceInclTax($product),
                         'final_price_incl_tax' => $this->priceHelper->getFinalPriceInclTax($product),
-                        'product_url' => $this->urlHelper->getProductUrl($product),
+                        'product_url' => $this->urlHelper->getProductUrl($product, $storeId, $appendStoreCode),
                         'image_url' => $this->urlHelper->getImageUrl($product),
                         'category_path' => $this->urlHelper->getCategoryPath($product),
                     ];
