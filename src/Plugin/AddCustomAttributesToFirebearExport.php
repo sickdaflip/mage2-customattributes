@@ -215,12 +215,12 @@ class AddCustomAttributesToFirebearExport
             }
 
             // Extract store filter from job parameters
-            // Firebear may use different parameter names depending on version
+            // Firebear stores it in behavior_data.store_ids as array
             $storeId = null;
 
-            // Try 'store_ids' (array format)
-            if (!empty($parameters['store_ids'])) {
-                $storeIds = $parameters['store_ids'];
+            // Try 'behavior_data/store_ids' (Firebear's actual location)
+            if (!empty($parameters['behavior_data']['store_ids'])) {
+                $storeIds = $parameters['behavior_data']['store_ids'];
                 if (is_array($storeIds) && count($storeIds) === 1) {
                     $storeId = (int) reset($storeIds);
                 } elseif (is_numeric($storeIds)) {
@@ -228,25 +228,15 @@ class AddCustomAttributesToFirebearExport
                 }
             }
 
-            // Try 'store' (single value format)
-            if ($storeId === null && !empty($parameters['store'])) {
-                $storeId = (int) $parameters['store'];
+            // Fallback: Try top-level 'store_ids'
+            if ($storeId === null && !empty($parameters['store_ids'])) {
+                $storeIds = $parameters['store_ids'];
+                if (is_array($storeIds) && count($storeIds) === 1) {
+                    $storeId = (int) reset($storeIds);
+                } elseif (is_numeric($storeIds)) {
+                    $storeId = (int) $storeIds;
+                }
             }
-
-            // Try 'behavior_data/store_id'
-            if ($storeId === null && !empty($parameters['behavior_data']['store_id'])) {
-                $storeId = (int) $parameters['behavior_data']['store_id'];
-            }
-
-            // Log parameters for debugging (temporary)
-            $this->logger->info('FlipDev_CustomAttributes: Job parameters keys: ' . implode(', ', array_keys($parameters)));
-            if (isset($parameters['export_filter'])) {
-                $this->logger->info('FlipDev_CustomAttributes: export_filter = ' . json_encode($parameters['export_filter']));
-            }
-            if (isset($parameters['behavior_data'])) {
-                $this->logger->info('FlipDev_CustomAttributes: behavior_data = ' . json_encode($parameters['behavior_data']));
-            }
-            $this->logger->info('FlipDev_CustomAttributes: Resolved store_id = ' . ($storeId ?? 'null'));
 
             $config['store_id'] = $storeId;
         } catch (\Exception $e) {
