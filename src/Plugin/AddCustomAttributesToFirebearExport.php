@@ -240,11 +240,11 @@ class AddCustomAttributesToFirebearExport
 
             // Log parameters for debugging (temporary)
             $this->logger->info('FlipDev_CustomAttributes: Job parameters keys: ' . implode(', ', array_keys($parameters)));
-            if (isset($parameters['store_ids'])) {
-                $this->logger->info('FlipDev_CustomAttributes: store_ids = ' . json_encode($parameters['store_ids']));
+            if (isset($parameters['export_filter'])) {
+                $this->logger->info('FlipDev_CustomAttributes: export_filter = ' . json_encode($parameters['export_filter']));
             }
-            if (isset($parameters['store'])) {
-                $this->logger->info('FlipDev_CustomAttributes: store = ' . json_encode($parameters['store']));
+            if (isset($parameters['behavior_data'])) {
+                $this->logger->info('FlipDev_CustomAttributes: behavior_data = ' . json_encode($parameters['behavior_data']));
             }
             $this->logger->info('FlipDev_CustomAttributes: Resolved store_id = ' . ($storeId ?? 'null'));
 
