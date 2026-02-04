@@ -132,28 +132,20 @@ class AddCustomAttributesToExportSource
         $list = $config['list'];
         $replaceCode = $config['replace_code'];
 
-        // Build mapping from system code to export name
-        // list and replace_code are parallel arrays
-        $systemToExport = [];
+        // Build final header directly from the job's list
+        // Each entry in list has a corresponding entry in replaceCode
+        // The same attribute can appear multiple times with different export names
+        $finalHeader = [];
         foreach ($list as $index => $systemCode) {
             if (is_string($systemCode)) {
                 // Use the export name from replace_code if available, otherwise use system code
                 $exportName = isset($replaceCode[$index]) && !empty($replaceCode[$index])
                     ? $replaceCode[$index]
                     : $systemCode;
-                $systemToExport[$systemCode] = $exportName;
+                $finalHeader[] = $exportName;
             }
         }
 
-        // Build final header ONLY from the job's list - nothing else
-        // This ensures only configured columns appear in the export
-        $finalHeader = [];
-        foreach ($list as $systemCode) {
-            if (is_string($systemCode) && isset($systemToExport[$systemCode])) {
-                $finalHeader[] = $systemToExport[$systemCode];
-            }
-        }
-
-        return array_values(array_unique($finalHeader));
+        return array_values($finalHeader);
     }
 }
