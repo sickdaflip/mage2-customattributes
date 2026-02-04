@@ -113,8 +113,11 @@ class AddCustomAttributesToFirebearExport
                 return $result;
             }
 
+            // Get store ID from job config (if a specific store view is selected)
+            $storeId = $jobConfig['store_id'] ?? null;
+
             // Load all products at once for efficiency
-            $productData = $this->loadProductData(array_keys($skus));
+            $productData = $this->loadProductData(array_keys($skus), $storeId);
 
             // Add our virtual attributes to each export row
             // Only add attributes that are configured in the job
@@ -167,11 +170,11 @@ class AddCustomAttributesToFirebearExport
      * Get job configuration including list of attributes and column mapping
      *
      * @param FirebearProductExport $subject
-     * @return array ['list' => [...], 'mapping' => [...]]
+     * @return array ['list' => [...], 'mapping' => [...], 'store_id' => int|null]
      */
     private function getJobConfig(FirebearProductExport $subject): array
     {
-        $config = ['list' => [], 'mapping' => []];
+        $config = ['list' => [], 'mapping' => [], 'store_id' => null];
 
         try {
             if (!method_exists($subject, 'getParameters')) {
@@ -191,6 +194,18 @@ class AddCustomAttributesToFirebearExport
                     $config['mapping'][$systemCode] = $replaceCode[$index];
                 }
             }
+
+            // Extract store filter from job parameters
+            // Firebear uses 'store_ids' for the store view filter
+            if (!empty($parameters['store_ids'])) {
+                $storeIds = $parameters['store_ids'];
+                // Can be array or single value
+                if (is_array($storeIds) && count($storeIds) === 1) {
+                    $config['store_id'] = (int) reset($storeIds);
+                } elseif (is_numeric($storeIds)) {
+                    $config['store_id'] = (int) $storeIds;
+                }
+            }
         } catch (\Exception $e) {
             $this->logger->error('FlipDev_CustomAttributes: Could not get job config: ' . $e->getMessage());
         }
@@ -202,11 +217,16 @@ class AddCustomAttributesToFirebearExport
      * Load product data for all SKUs and calculate virtual attributes
      *
      * @param array $skus
+     * @param int|null $storeId Store ID from job config (if specific store view is selected)
      * @return array
      */
-    private function loadProductData(array $skus): array
+    private function loadProductData(array $skus, ?int $storeId = null): array
     {
         $productData = [];
+
+        // Determine if we should append store code to URLs
+        // Only append when a specific store view is selected (storeId > 0)
+        $appendStoreCode = ($storeId !== null && $storeId > 0);
 
         // Load products in batches for memory efficiency
         $batchSize = 500;
@@ -214,6 +234,12 @@ class AddCustomAttributesToFirebearExport
 
         foreach ($skuBatches as $skuBatch) {
             $collection = $this->productCollectionFactory->create();
+
+            // Set store context if specified
+            if ($storeId !== null && $storeId > 0) {
+                $collection->setStoreId($storeId);
+            }
+
             $collection->addAttributeToSelect(['price', 'special_price', 'special_from_date', 'special_to_date', 'tax_class_id', 'url_key', 'image'])
                 ->addAttributeToFilter('sku', ['in' => $skuBatch])
                 ->addCategoryIds();
@@ -226,7 +252,7 @@ class AddCustomAttributesToFirebearExport
                         'price_incl_tax' => $this->priceHelper->getPriceInclTax($product),
                         'special_price_incl_tax' => $this->priceHelper->getSpecialPriceInclTax($product),
                         'final_price_incl_tax' => $this->priceHelper->getFinalPriceInclTax($product),
-                        'product_url' => $this->urlHelper->getProductUrl($product),
+                        'product_url' => $this->urlHelper->getProductUrl($product, $storeId, $appendStoreCode),
                         'image_url' => $this->urlHelper->getImageUrl($product),
                         'category_path' => $this->urlHelper->getCategoryPath($product),
                     ];
